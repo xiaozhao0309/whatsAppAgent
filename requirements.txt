@@ -1,0 +1,19 @@
+# Web 框架 + ASGI 服务器
+fastapi
+uvicorn[standard]
+python-multipart          # FastAPI 解析 form 表单（Twilio webhook 用）必须
+
+# WhatsApp 通道（BSP）
+twilio
+
+# 向量库（本地文件模式，无需单独部署）
+qdrant-client
+
+# 文本向量化（本地模型，无需 API Key；会附带安装 torch）
+sentence-transformers
+
+# LLM 生成
+anthropic
+
+# .env 读取
+python-dotenv
