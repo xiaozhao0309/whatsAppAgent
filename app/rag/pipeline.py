@@ -2,7 +2,7 @@
 
 answer(question) -> (答案, 来源列表)
 """
-import anthropic
+from openai import OpenAI
 
 from ..config import settings
 from .embeddings import embed_one
@@ -44,18 +44,34 @@ def answer(question: str) -> tuple[str, list[str]]:
             sources.append(source)
 
     # 3. 生成：把检索到的资料塞进 prompt，让 Claude 回答
-    client = anthropic.Anthropic(
-        api_key=settings.anthropic_api_key,
-        base_url=settings.anthropic_base_url or None,
+    if not settings.ark_api_key:
+        raise RuntimeError("ARK_API_KEY 未配置")
+
+    if not settings.ark_model:
+        raise RuntimeError("ARK_MODEL 未配置")
+
+    client = OpenAI(
+        api_key=settings.ark_api_key,
+        base_url=settings.ark_base_url,
     )
-    resp = client.messages.create(
-        model=settings.anthropic_model,
+
+    resp = client.chat.completions.create(
+        model=settings.ark_model,
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
         messages=[
-            {"role": "user", "content": _build_prompt(question, "\n\n".join(context_parts))}
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": _build_prompt(
+                    question,
+                    "\n\n".join(context_parts),
+                ),
+            },
         ],
     )
-    # glm-5.2 等推理模型可能先返回 ThinkingBlock，这里只拼接文本块
-    reply = "".join(getattr(b, "text", "") for b in resp.content).strip()
+
+    reply = (resp.choices[0].message.content or "").strip()
     return reply, sources

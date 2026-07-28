@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from .channel import send_whatsapp
 from .rag.pipeline import answer
@@ -33,6 +34,20 @@ app = FastAPI(title="WhatsApp 企业知识问答 Agent", lifespan=lifespan)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+class AskRequest(BaseModel):
+    question: str
+
+
+@app.post("/ask")
+def ask_question(request: AskRequest):
+    reply, sources = answer(request.question)
+
+    return {
+        "question": request.question,
+        "answer": reply,
+        "sources": sources,
+    }
 
 
 @app.post("/webhook")

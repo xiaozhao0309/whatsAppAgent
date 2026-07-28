@@ -13,7 +13,7 @@ qdrant-client
 sentence-transformers
 
 # LLM 生成
-anthropic
+openai
 
 # .env 读取
 python-dotenv
