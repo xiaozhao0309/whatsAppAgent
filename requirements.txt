@@ -17,3 +17,6 @@ openai
 
 # .env 读取
 python-dotenv
+
+# 测试
+pytest

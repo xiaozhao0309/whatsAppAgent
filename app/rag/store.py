@@ -43,3 +43,24 @@ def search(query_vector: list[float], limit: int):
         limit=limit,
         with_payload=True,
     ).points
+
+
+def count_points() -> int:
+    """返回 collection 当前的 point 数量；collection 不存在时返回 0。"""
+    client = get_client()
+    names = [c.name for c in client.get_collections().collections]
+    if settings.qdrant_collection not in names:
+        return 0
+    return client.count(collection_name=settings.qdrant_collection).count
+
+
+def clear_collection() -> None:
+    """清空 collection 内全部 point（用于全量重建）。
+
+    删除后重建一个空 collection，保证向量维度配置一致。
+    """
+    client = get_client()
+    names = [c.name for c in client.get_collections().collections]
+    if settings.qdrant_collection in names:
+        client.delete_collection(collection_name=settings.qdrant_collection)
+    ensure_collection()
