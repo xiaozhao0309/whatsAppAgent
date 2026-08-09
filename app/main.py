@@ -207,7 +207,7 @@ def _handle_command(request_id: str, from_: str, body: str, cmd_type: str, value
         # 纯问候：新用户给完整欢迎语，老用户简单寒暄，不做 RAG。
         # 记录这一轮，确保后续消息不再被当成新用户重复欢迎。
         if session_store.exists(from_):
-            greeting_reply = "你好！有什么可以帮你的吗？直接提问即可。"
+            greeting_reply = "Hi! How can I help? Just send your question."
         else:
             greeting_reply = responses.WELCOME
         session_store.add_turn(from_, "user", body)
@@ -257,7 +257,7 @@ def _answer_question(request_id: str, from_: str, body: str) -> None:
         session_store.record_hit(from_)
         reply = result.reply
         if result.sources:
-            reply += "\n\n参考来源: " + ", ".join(result.sources)
+            reply += "\n\nSources: " + ", ".join(result.sources)
         reply = responses.with_feedback_hint(reply)
 
         session_store.add_turn(from_, "user", body)

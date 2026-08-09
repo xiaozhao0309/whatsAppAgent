@@ -118,6 +118,6 @@ def test_truncate_helper():
 
 def test_model_self_refusal_treated_as_no_match(monkeypatch):
     hits = [_hit(0.9, "内容", "x.md")]
-    _patch(monkeypatch, hits=hits, reply="资料里没有相关内容")
+    _patch(monkeypatch, hits=hits, reply="The reference materials do not contain relevant content")
     result = pipeline.answer("问题")
     assert result.status == "no_match"

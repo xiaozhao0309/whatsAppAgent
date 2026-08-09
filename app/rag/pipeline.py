@@ -14,13 +14,13 @@ from ..config import settings
 from .embeddings import embed_one
 from .store import count_points, search
 
-SYSTEM_PROMPT = """你是一个企业内部知识问答助手。请只根据下面提供的【参考资料】回答用户问题。
-要求：
-1. 答案简洁、准确，尽量直接给出可操作的信息，不要超过 800 字。
-2. 如果参考资料里没有相关信息，明确说"资料里没有相关内容"，不要编造。
-3. 回答末尾用 [来源: 文件名] 标注引用的资料来源（多个来源全部列出，没有则不标）。"""
+SYSTEM_PROMPT = """You are an internal company knowledge Q&A assistant. Answer the user's question using ONLY the [Reference materials] provided below.
+Rules:
+1. Keep answers concise and accurate. Give actionable information directly, and keep the answer under 800 characters.
+2. If the reference materials do not contain relevant information, say exactly "The reference materials do not contain relevant content." Do not make anything up.
+3. At the end of your answer, cite every source file you used as [Source: filename] (list all of them; omit this if none apply)."""
 
-REFUSAL = "资料里没有相关内容"
+REFUSAL = "The reference materials do not contain relevant content"
 
 
 @dataclass
@@ -39,8 +39,8 @@ def _build_context(hits) -> tuple[str, list[str], float | None]:
     for i, h in enumerate(hits, 1):
         payload = h.payload or {}
         text = payload.get("text", "")
-        source = payload.get("source", "未知")
-        parts.append(f"[{i}] (来源: {source})\n{text}")
+        source = payload.get("source", "unknown")
+        parts.append(f"[{i}] (Source: {source})\n{text}")
         if source not in sources:
             sources.append(source)
         if top_score is None or (h.score is not None and h.score > top_score):
@@ -81,7 +81,7 @@ def answer(question: str, history: list | None = None) -> AnswerResult:
         raise RuntimeError("ARK_MODEL 未配置")
 
     messages = [
-        {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n【参考资料】\n{context}"},
+        {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n[Reference materials]\n{context}"},
     ]
     if history:
         messages.extend(history)

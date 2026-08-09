@@ -20,19 +20,19 @@ def _build_context(store: SessionStore, wa_id: str, question: str) -> str:
     recent = turns[-HANDOFF_CONTEXT_TURNS:] if turns else []
     lines = []
     for t in recent:
-        speaker = "客户" if t.role == "user" else "助手"
+        speaker = "Customer" if t.role == "user" else "Assistant"
         lines.append(f"{speaker}: {t.content[:300]}")
     context_text = "\n".join(lines)
     if len(context_text) > HANDOFF_CONTEXT_CHARS:
         context_text = context_text[-HANDOFF_CONTEXT_CHARS:]
 
-    last_q = question or store.last_user_question(wa_id) or "(无明确问题)"
+    last_q = question or store.last_user_question(wa_id) or "(no explicit question)"
     return (
-        "🔔 转人工请求\n"
-        f"客户：{wa_id}\n"
-        f"问题：{last_q}\n"
-        "--- 最近对话 ---\n"
-        f"{context_text or '(无)'}"
+        "🔔 Hand-off request\n"
+        f"Customer: {wa_id}\n"
+        f"Question: {last_q}\n"
+        "--- Recent conversation ---\n"
+        f"{context_text or '(none)'}"
     )
 
 
@@ -49,7 +49,7 @@ def trigger_handoff(
     """
     body = _build_context(store, wa_id, question)
     if reason == "auto_no_answer":
-        body = "🔔 连续未答出，自动转人工\n" + body.split("\n", 1)[1]
+        body = "🔔 Could not answer twice in a row — auto hand-off\n" + body.split("\n", 1)[1]
 
     primary = settings.on_duty_number
     fallback = settings.on_duty_fallback_number
