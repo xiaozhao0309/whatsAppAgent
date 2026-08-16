@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+python-multipart
+twilio
+requests
+python-dotenv
+pytest
