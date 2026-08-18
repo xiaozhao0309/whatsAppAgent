@@ -64,3 +64,40 @@ def test_handoff_unconfigured_returns_false(monkeypatch):
     store = _store_with_history()
     ok = handoff.trigger_handoff(store, "u", "q")
     assert ok is False
+
+
+def test_both_targets_fail_returns_false(monkeypatch):
+    def fake_send(to, body):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(handoff, "send_whatsapp", fake_send)
+    monkeypatch.setattr(
+        handoff, "settings", _fake_settings("whatsapp:+111", "whatsapp:+222")
+    )
+    store = _store_with_history()
+    assert handoff.trigger_handoff(store, "u", "q", reason="customer_request") is False
+
+
+def test_reason_changes_header(monkeypatch):
+    sent = {}
+
+    def fake_send(to, body):
+        sent["body"] = body
+
+    monkeypatch.setattr(handoff, "send_whatsapp", fake_send)
+    monkeypatch.setattr(
+        handoff, "settings", _fake_settings("whatsapp:+111", "")
+    )
+    store = _store_with_history()
+
+    handoff.trigger_handoff(store, "u", "q", reason="customer_request")
+    assert sent["body"].startswith("🔔 Hand-off request")
+    assert "Reason: customer_request" in sent["body"]
+
+    handoff.trigger_handoff(store, "u", "q", reason="auto_no_answer")
+    assert sent["body"].startswith("🔔 Could not answer — auto hand-off")
+    assert "Reason: auto_no_answer" in sent["body"]
+
+    handoff.trigger_handoff(store, "u", "q", reason="ai_error")
+    assert sent["body"].startswith("🔔 AI service failing repeatedly — auto hand-off")
+    assert "Reason: ai_error" in sent["body"]

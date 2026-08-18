@@ -68,6 +68,19 @@ def test_miss_streak():
     assert store.get_miss_streak("u") == 0
 
 
+def test_error_streak_and_hit_resets_both():
+    store = SessionStore(ttl_seconds=100, max_turns=10, max_chars=10000)
+    _set_time(1000.0)
+    assert store.record_error("u") == 1
+    assert store.record_error("u") == 2
+    assert store.get_error_streak("u") == 2
+    # 一次成功回答同时清零 miss 和 error 两个计数
+    store.record_miss("u")
+    store.record_hit("u")
+    assert store.get_miss_streak("u") == 0
+    assert store.get_error_streak("u") == 0
+
+
 def test_feedback_dedup():
     store = SessionStore(ttl_seconds=100, max_turns=10, max_chars=10000)
     _set_time(1000.0)

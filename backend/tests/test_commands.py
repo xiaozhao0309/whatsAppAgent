@@ -20,6 +20,13 @@ def test_handoff_command():
         assert cmd is not None and cmd.type == "handoff", text
 
 
+def test_commands_tolerate_trailing_punctuation():
+    # 去掉末尾中英文标点后再匹配
+    for text in ["agent!", "Agent。", "转人工！", "help?", "reset.", "你好！"]:
+        cmd = parse_command(text)
+        assert cmd is not None, text
+
+
 def test_feedback_command():
     up = parse_command("👍")
     assert up is not None and up.type == "feedback" and up.value == "up"

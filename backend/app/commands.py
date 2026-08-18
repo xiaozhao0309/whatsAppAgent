@@ -36,14 +36,16 @@ def parse_command(body: str) -> Optional[Command]:
     text = body.strip()
     lowered = text.lower()
 
-    if lowered in HELP_KEYWORDS:
+    # 指令匹配前去掉末尾中英文标点，使"agent!""转人工。""help?"等可识别。
+    stripped = lowered.rstrip("。.！!？?，,~～ ")
+    if stripped in HELP_KEYWORDS:
         return Command("help")
-    if lowered in RESET_KEYWORDS:
+    if stripped in RESET_KEYWORDS:
         return Command("reset")
-    if lowered in HANDOFF_KEYWORDS:
+    if stripped in HANDOFF_KEYWORDS:
         return Command("handoff")
-    # 问候语：去掉末尾中英文标点后再匹配，如"你好。""hi!"
-    if lowered.rstrip("。.！!？?，,~～ ") in GREETING_KEYWORDS:
+    # 问候语：同样去掉末尾标点，如"你好。""hi!"
+    if stripped in GREETING_KEYWORDS:
         return Command("greeting")
     if text in POSITIVE_FEEDBACK or lowered in {"yes", "good"}:
         return Command("feedback", "up")

@@ -19,7 +19,7 @@ HELP = (
     "Commands:\n"
     "• help / menu: show this message\n"
     "• reset: clear the current conversation\n"
-    "• agent: notify the on-duty staff to follow up\n"
+    "• agent: get the support phone number to reach a human\n"
     "After an answer you can reply 👍 / 👎 to give feedback."
 )
 
@@ -28,13 +28,29 @@ NO_ANSWER = (
     "Try rephrasing your question, or reply \"agent\" to have the on-duty staff follow up."
 )
 
+# 连续答不出：回复联系电话（不自动通知值班人，把选择权交给客户）。
+# {phone} 由调用方用 settings.contact_phone_number 填充。
+NO_ANSWER_AUTO = (
+    "Sorry, I couldn't find a confident answer to that. "
+    "For further help, please contact our support team at {phone}."
+)
+
+# AI 服务连续报错：回复联系电话。
+ERROR_AUTO = (
+    "Sorry, the knowledge service is temporarily unavailable. "
+    "For immediate help, please contact our support team at {phone}."
+)
+
+# 客户主动发 agent：回复联系电话（后台仍会通知值班人，见 main.py）。
+CONTACT_HUMAN = "You can reach our on-duty staff at {phone}."
+
+# 低置信度回答后追加的转人工提示（不自动转，只给客户选择权）。
+LOW_CONFIDENCE_HINT = "\n\nNot sure that fully answers your question? Reply \"agent\" to reach our support team."
+
 EMPTY_KB = (
     "The knowledge base isn't ready yet. Please import documents first "
     "(run `python scripts/ingest.py` or call /admin/ingest)."
 )
-
-HANDOFF_NOTIFIED = "The on-duty staff have been notified and will get back to you shortly. Please hold on."
-HANDOFF_UNAVAILABLE = "Sorry, we couldn't reach the on-duty staff right now. Please try again later or contact us through another channel."
 
 RATE_LIMITED = "You're sending messages a bit too quickly. Please try again in a moment."
 MESSAGE_TOO_LONG = "Your message is too long. Please shorten it and resend (under 2000 characters)."

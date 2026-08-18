@@ -13,8 +13,17 @@ log = logging.getLogger("whatsapp_agent")
 HANDOFF_CONTEXT_TURNS = 5
 HANDOFF_CONTEXT_CHARS = 2000
 
+# 不同触发原因对应值班人收到的通知标题。
+_HEADERS = {
+    "customer_request": "🔔 Hand-off request",
+    "auto_no_answer": "🔔 Could not answer — auto hand-off",
+    "ai_error": "🔔 AI service failing repeatedly — auto hand-off",
+}
 
-def _build_context(store: SessionStore, wa_id: str, question: str) -> str:
+
+def _build_context(
+    store: SessionStore, wa_id: str, question: str, reason: str
+) -> str:
     """组装发送给值班人的通知正文。"""
     turns, _ = store.build_context(wa_id)
     recent = turns[-HANDOFF_CONTEXT_TURNS:] if turns else []
@@ -26,10 +35,12 @@ def _build_context(store: SessionStore, wa_id: str, question: str) -> str:
     if len(context_text) > HANDOFF_CONTEXT_CHARS:
         context_text = context_text[-HANDOFF_CONTEXT_CHARS:]
 
+    header = _HEADERS.get(reason, _HEADERS["customer_request"])
     last_q = question or store.last_user_question(wa_id) or "(no explicit question)"
     return (
-        "🔔 Hand-off request\n"
+        f"{header}\n"
         f"Customer: {wa_id}\n"
+        f"Reason: {reason}\n"
         f"Question: {last_q}\n"
         "--- Recent conversation ---\n"
         f"{context_text or '(none)'}"
@@ -47,9 +58,7 @@ def trigger_handoff(
     返回 True 表示成功通知到（主号或备用号）；False 表示无法通知（未配置/发送失败）。
     不抛异常，调用方据此决定给客户的回复。
     """
-    body = _build_context(store, wa_id, question)
-    if reason == "auto_no_answer":
-        body = "🔔 Could not answer twice in a row — auto hand-off\n" + body.split("\n", 1)[1]
+    body = _build_context(store, wa_id, question, reason)
 
     primary = settings.on_duty_number
     fallback = settings.on_duty_fallback_number

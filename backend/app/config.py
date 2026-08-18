@@ -44,6 +44,10 @@ class Settings:
     # --- Hand-off to human ---
     on_duty_number: str
     on_duty_fallback_number: str
+    contact_phone_number: str         # 客户转人工时回复的联系电话
+    handoff_miss_threshold: int       # 连续答不出多少次后提示联系电话
+    handoff_error_threshold: int      # AI 服务连续报错多少次后提示联系电话
+    low_confidence_score: float       # answered 且低于此分追加转人工提示；0 关闭
 
 
 settings = Settings(
@@ -59,4 +63,8 @@ settings = Settings(
     message_max_chars=_int("MESSAGE_MAX_CHARS", 2000),
     on_duty_number=os.getenv("ON_DUTY_NUMBER", ""),
     on_duty_fallback_number=os.getenv("ON_DUTY_FALLBACK_NUMBER", ""),
+    contact_phone_number=os.getenv("CONTACT_PHONE_NUMBER", "020 1234567"),
+    handoff_miss_threshold=_int("HANDOFF_MISS_THRESHOLD", 2),
+    handoff_error_threshold=_int("HANDOFF_ERROR_THRESHOLD", 2),
+    low_confidence_score=_float("LOW_CONFIDENCE_SCORE", 0.6),
 )

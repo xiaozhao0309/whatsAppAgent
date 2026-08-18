@@ -29,6 +29,7 @@ class SessionState:
     turns: list[Turn] = field(default_factory=list)
     last_active_ts: float = 0.0
     miss_streak: int = 0
+    error_streak: int = 0  # 连续 AI 服务错误次数（用于自动转人工）
     last_answer_feedback: str | None = None  # None=未评价, "up"/"down"=已评价
 
 
@@ -114,7 +115,7 @@ class SessionStore:
         context = "\n".join(f"{t.role}: {t.content}" for t in kept)
         return kept, context
 
-    # --- 连续拒答计数 ---
+    # --- 连续失败计数（拒答 / AI 错误，用于自动转人工）---
     def record_miss(self, wa_id: str) -> int:
         with self._lock:
             state = self._get_or_create(wa_id)
@@ -122,16 +123,30 @@ class SessionStore:
             state.last_active_ts = _clock()
             return state.miss_streak
 
+    def record_error(self, wa_id: str) -> int:
+        with self._lock:
+            state = self._get_or_create(wa_id)
+            state.error_streak += 1
+            state.last_active_ts = _clock()
+            return state.error_streak
+
     def record_hit(self, wa_id: str) -> None:
+        """成功回答一次：清零连续失败计数。"""
         with self._lock:
             state = self._sessions.get(wa_id)
             if state is not None:
                 state.miss_streak = 0
+                state.error_streak = 0
 
     def get_miss_streak(self, wa_id: str) -> int:
         with self._lock:
             state = self._sessions.get(wa_id)
             return state.miss_streak if state else 0
+
+    def get_error_streak(self, wa_id: str) -> int:
+        with self._lock:
+            state = self._sessions.get(wa_id)
+            return state.error_streak if state else 0
 
     # --- 反馈去重 ---
     def try_mark_feedback(self, wa_id: str, value: str) -> bool:

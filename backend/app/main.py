@@ -20,6 +20,8 @@ from .commands import parse_command
 from .config import settings
 from .guards import IdempotencyGuard, RateLimiter, check_message_length
 from .handoff import trigger_handoff
+from .handoff_policy import decide
+from .handoff_store import HandoffStore
 from .observability import log_event, mask_waid, new_request_id
 from .rag_client import RAGClient, RAGServiceError
 from .session import SessionStore
@@ -36,6 +38,10 @@ session_store = SessionStore(
 idempotency = IdempotencyGuard()
 rate_limiter = RateLimiter(max_per_minute=settings.rate_limit_per_minute)
 rag_client = RAGClient(base_url=settings.rag_service_url, timeout=settings.rag_timeout)
+# Tracks which sessions have already been handed off to a human, so repeated
+# failures don't spam the on-duty number. Also the seam for future bidirectional
+# staff<->customer relay.
+handoff_store = HandoffStore(ttl_seconds=settings.session_ttl_seconds)
 
 # One processing lock per user so one user's messages are handled serially,
 # preventing duplicate welcomes/replies/session corruption when a previous
@@ -197,9 +203,10 @@ def _handle_command(request_id: str, from_: str, body: str, cmd_type: str, value
         _send(from_, responses.HELP)
     elif cmd_type == "reset":
         session_store.reset(from_)
+        handoff_store.clear(from_)
         _send(from_, responses.RESET_DONE)
     elif cmd_type == "handoff":
-        _do_handoff(request_id, from_, body, reason="customer_request")
+        _do_customer_handoff(request_id, from_, body)
     elif cmd_type == "feedback":
         accepted = session_store.try_mark_feedback(from_, value)
         if accepted:
@@ -217,58 +224,100 @@ def _handle_command(request_id: str, from_: str, body: str, cmd_type: str, value
         _send(from_, greeting_reply)
 
 
-def _do_handoff(request_id: str, from_: str, question: str, reason: str) -> None:
+def _notify_handoff(request_id: str, from_: str, question: str, reason: str) -> bool:
+    """Send the hand-off notification to on-duty staff. Returns whether notified."""
     ok = trigger_handoff(session_store, from_, question, reason=reason)
     log_event(request_id, "handoff", from_=mask_waid(from_), reason=reason, notified=ok)
-    _send(from_, responses.HANDOFF_NOTIFIED if ok else responses.HANDOFF_UNAVAILABLE)
+    return ok
+
+
+def _do_customer_handoff(request_id: str, from_: str, body: str) -> None:
+    """Customer asked for a human: reply with the contact phone number and, if
+    configured, also notify the on-duty staff on WhatsApp (best effort)."""
+    ok = _notify_handoff(request_id, from_, body, reason="customer_request")
+    handoff_store.mark_active(from_, reason="customer_request", notified=ok)
+    _send(from_, responses.CONTACT_HUMAN.format(phone=settings.contact_phone_number))
 
 
 def _answer_question(request_id: str, from_: str, body: str) -> None:
     try:
-        # History is already truncated by turn count / char count.
-        turns, _ = session_store.build_context(from_)
-        history = _turns_to_messages(turns)
+        status, top_score, result = _call_ai(request_id, from_, body)
 
-        result = rag_client.answer(body, history=history)
         log_event(
             request_id,
             "answer_done",
             from_=mask_waid(from_),
-            status=result.status,
-            hits=len(result.sources),
-            top_score=round(result.top_score, 3) if result.top_score is not None else None,
+            status=status,
+            hits=len(result.sources) if result else 0,
+            top_score=round(top_score, 3) if top_score is not None else None,
         )
 
-        if result.status == "empty_kb":
-            _send(from_, responses.EMPTY_KB)
-            return
+        decision = decide(
+            status=status,
+            top_score=top_score,
+            miss_streak=session_store.get_miss_streak(from_),
+            error_streak=session_store.get_error_streak(from_),
+            already_active=handoff_store.is_active(from_),
+            miss_threshold=settings.handoff_miss_threshold,
+            error_threshold=settings.handoff_error_threshold,
+            low_conf_min=settings.low_confidence_score,
+        )
 
-        if result.status == "no_match":
+        if decision.record_hit:
+            session_store.record_hit(from_)
+        if decision.record_miss:
+            session_store.record_miss(from_)
+        if decision.record_error:
+            session_store.record_error(from_)
+
+        # Repeated no_match/error: give the customer the contact phone number
+        # once (no auto staff notification), and mark escalated so later
+        # failures don't repeat the number.
+        customer_reply = decision.customer_reply
+        if decision.mark_escalated:
+            handoff_store.mark_active(
+                from_, reason="auto_escalated", notified=False
+            )
+            customer_reply = customer_reply.format(
+                phone=settings.contact_phone_number
+            )
+
+        if decision.record_hit:
+            # Successful (or low-confidence) answer.
+            reply = result.reply
+            if result.sources:
+                reply += "\n\nSources: " + ", ".join(result.sources)
+            if decision.low_confidence:
+                reply += responses.LOW_CONFIDENCE_HINT
+            reply = responses.with_feedback_hint(reply)
             session_store.add_turn(from_, "user", body)
-            session_store.add_turn(from_, "assistant", responses.NO_ANSWER)
-            streak = session_store.record_miss(from_)
-            if streak >= 2:
-                # Could not answer twice in a row -> auto hand-off (FR-016).
-                _send(from_, responses.NO_ANSWER)
-                _do_handoff(request_id, from_, body, reason="auto_no_answer")
-            else:
-                _send(from_, responses.NO_ANSWER)
-            return
-
-        # Normal answer.
-        session_store.record_hit(from_)
-        reply = result.reply
-        if result.sources:
-            reply += "\n\nSources: " + ", ".join(result.sources)
-        reply = responses.with_feedback_hint(reply)
-
-        session_store.add_turn(from_, "user", body)
-        session_store.add_turn(from_, "assistant", result.reply)
-        _send(from_, reply)
-
+            session_store.add_turn(from_, "assistant", result.reply)
+            _send(from_, reply)
+        else:
+            session_store.add_turn(from_, "user", body)
+            session_store.add_turn(from_, "assistant", customer_reply)
+            _send(from_, customer_reply)
     except Exception:
+        # Last-resort safety net: never let a handler crash without replying.
         log.exception("answer handling failed request_id=%s", request_id)
         _send(from_, responses.ERROR)
+
+
+def _call_ai(request_id: str, from_: str, body: str):
+    """Call the AI service. Returns (status, top_score, result).
+
+    Connection/timeout/5xx become status="error" instead of propagating, so the
+    hand-off policy can escalate repeated AI failures to a human.
+    """
+    try:
+        # History is already truncated by turn count / char count.
+        turns, _ = session_store.build_context(from_)
+        history = _turns_to_messages(turns)
+        result = rag_client.answer(body, history=history)
+        return result.status, result.top_score, result
+    except RAGServiceError:
+        log.exception("AI/RAG service call failed request_id=%s", request_id)
+        return "error", None, None
 
 
 @app.post("/admin/ingest")
